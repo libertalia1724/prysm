@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	builderapi "github.com/OffchainLabs/prysm/v7/api/client/builder"
@@ -20,11 +21,16 @@ type fakeBuilderClient struct {
 	bid       *eth.SignedExecutionPayloadBid
 	getErr    error
 	prefCount int
+	mu        sync.Mutex
+	gotAuths  []*eth.SignedRequestAuthV1
 }
 
 func (f *fakeBuilderClient) NodeURL() string { return f.url }
 
-func (f *fakeBuilderClient) GetExecutionPayloadBid(context.Context, primitives.Slot, [32]byte, [32]byte, [48]byte, *eth.SignedRequestAuthV1) (*eth.SignedExecutionPayloadBid, error) {
+func (f *fakeBuilderClient) GetExecutionPayloadBid(_ context.Context, _ primitives.Slot, _ [32]byte, _ [32]byte, _ [48]byte, auth *eth.SignedRequestAuthV1) (*eth.SignedExecutionPayloadBid, error) {
+	f.mu.Lock()
+	f.gotAuths = append(f.gotAuths, auth)
+	f.mu.Unlock()
 	return f.bid, f.getErr
 }
 
@@ -62,7 +68,7 @@ func TestGetExecutionPayloadBid_FanOutAndDedup(t *testing.T) {
 	s := newMultiplexService(t, clients)
 
 	auths := []*eth.SignedRequestAuthV1{authFor("http://a"), authFor("http://b"), authFor("http://a")}
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths)
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "")
 	require.NoError(t, err)
 	require.Equal(t, 2, len(bids))
 
@@ -84,7 +90,7 @@ func TestGetExecutionPayloadBid_SkipsErrorsAndNil(t *testing.T) {
 
 	// http://nodial has no client; dialing it fails and is skipped.
 	auths := []*eth.SignedRequestAuthV1{authFor("http://ok"), authFor("http://err"), authFor("http://none"), authFor("http://nodial")}
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths)
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "")
 	require.NoError(t, err)
 	require.Equal(t, 1, len(bids))
 	require.Equal(t, "http://ok", bids[0].BuilderURL)
@@ -92,7 +98,7 @@ func TestGetExecutionPayloadBid_SkipsErrorsAndNil(t *testing.T) {
 
 func TestGetExecutionPayloadBid_NoAuths(t *testing.T) {
 	s := newMultiplexService(t, nil)
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, nil)
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, 0, len(bids))
 }
@@ -130,9 +136,52 @@ func TestSubmitBuilderPreferences_DialsPerURL(t *testing.T) {
 		Preferences: &eth.BuilderPreferencesV1{},
 		Auth:        authFor("http://b"),
 	}
-	require.NoError(t, s.SubmitBuilderPreferences(t.Context(), [48]byte{}, req))
+	require.NoError(t, s.SubmitBuilderPreferences(t.Context(), [48]byte{}, req, ""))
 	require.Equal(t, 1, fc.prefCount)
 
-	err := s.SubmitBuilderPreferences(t.Context(), [48]byte{}, &eth.BuilderPreferencesRequestV1{Auth: authFor("")})
+	err := s.SubmitBuilderPreferences(t.Context(), [48]byte{}, &eth.BuilderPreferencesRequestV1{Auth: authFor("")}, "")
+	require.ErrorContains(t, "missing builder url", err)
+}
+
+func TestGetExecutionPayloadBid_ProxyOverridesDial(t *testing.T) {
+	proxy := &fakeBuilderClient{url: "http://proxy", bid: bidWithValue(10)}
+	s := newMultiplexService(t, map[string]*fakeBuilderClient{"http://proxy": proxy})
+
+	auths := []*eth.SignedRequestAuthV1{authFor("http://a"), authFor("http://b")}
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "http://proxy")
+	require.NoError(t, err)
+	require.Equal(t, 2, len(bids))
+
+	// Bids keep the builder identity, not the proxy.
+	got := map[string]bool{}
+	for _, pb := range bids {
+		got[pb.BuilderURL] = true
+	}
+	require.Equal(t, true, got["http://a"])
+	require.Equal(t, true, got["http://b"])
+
+	// Both requests hit the proxy carrying the auths signed over the builder URLs.
+	require.Equal(t, 2, len(proxy.gotAuths))
+	forwarded := map[string]bool{}
+	for _, a := range proxy.gotAuths {
+		forwarded[string(a.GetMessage().GetData())] = true
+	}
+	require.Equal(t, true, forwarded["http://a"])
+	require.Equal(t, true, forwarded["http://b"])
+}
+
+func TestSubmitBuilderPreferences_ProxyOverridesDial(t *testing.T) {
+	proxy := &fakeBuilderClient{url: "http://proxy"}
+	s := newMultiplexService(t, map[string]*fakeBuilderClient{"http://proxy": proxy})
+
+	req := &eth.BuilderPreferencesRequestV1{
+		Preferences: &eth.BuilderPreferencesV1{},
+		Auth:        authFor("http://b"),
+	}
+	require.NoError(t, s.SubmitBuilderPreferences(t.Context(), [48]byte{}, req, "http://proxy"))
+	require.Equal(t, 1, proxy.prefCount)
+
+	// The auth is still required even when a proxy is given.
+	err := s.SubmitBuilderPreferences(t.Context(), [48]byte{}, &eth.BuilderPreferencesRequestV1{Auth: authFor("")}, "http://proxy")
 	require.ErrorContains(t, "missing builder url", err)
 }

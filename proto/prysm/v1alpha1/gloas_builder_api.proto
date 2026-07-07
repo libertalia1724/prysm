@@ -48,4 +48,6 @@ message BuilderPreferencesRequestV1 {
 message SubmitBuilderPreferencesRequest {
   bytes validator_pubkey = 1;
   BuilderPreferencesRequestV1 request = 2;
+  // Optional dial override, the auth inside request stays signed over the builder URL.
+  string proxy = 3;
 }

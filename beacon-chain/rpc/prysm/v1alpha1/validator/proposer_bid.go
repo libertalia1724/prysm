@@ -146,6 +146,7 @@ type builderBidQuery struct {
 	parentGasLimit uint64
 	targetGasLimit uint64
 	auths          []*ethpb.SignedRequestAuthV1
+	proxy          string
 }
 
 func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.BeaconState, q *builderBidQuery) (*ethpb.SignedExecutionPayloadBid, string) {
@@ -154,7 +155,7 @@ func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.
 	}
 	ctx, cancel := context.WithTimeout(ctx, builderBidTimeout)
 	defer cancel()
-	bids, err := vs.BlockBuilder.GetExecutionPayloadBid(ctx, q.slot, q.parentHash, q.parentRoot, q.pubkey, q.auths)
+	bids, err := vs.BlockBuilder.GetExecutionPayloadBid(ctx, q.slot, q.parentHash, q.parentRoot, q.pubkey, q.auths, q.proxy)
 	if err != nil {
 		builderGetPayloadMissCount.Inc()
 		log.WithError(err).Error("Could not get builder execution payload bid")

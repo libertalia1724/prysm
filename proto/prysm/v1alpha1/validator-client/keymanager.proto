@@ -134,7 +134,8 @@ message BuilderConfig {
     (ethereum.eth.ext.cast_type) =
         "github.com/OffchainLabs/prysm/v7/consensus-types/validator.Uint64"
   ];
-  repeated string relays = 3;
+  // Deprecated: use builders. Read as a fallback when builders is empty.
+  repeated string relays = 3 [ deprecated = true ];
   // max_execution_payment is the maximum execution layer payment (in Gwei) the
   // proposer will accept from a builder for the Gloas builder API. 0 means
   // trustless-only; 2^64-1 means accept any amount.
@@ -142,6 +143,10 @@ message BuilderConfig {
     (ethereum.eth.ext.cast_type) =
         "github.com/OffchainLabs/prysm/v7/consensus-types/validator.Uint64"
   ];
+  // proxy optionally overrides where builder HTTP requests are sent, request
+  // auths stay signed over the builder URLs so a sidecar can forward them.
+  string proxy = 5;
+  repeated string builders = 6;
 }
 
 // ProposerSettingsPayload is used to unmarshal files sent from the validator

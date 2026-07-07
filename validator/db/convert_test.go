@@ -110,7 +110,7 @@ func TestDB_ConvertDatabase(t *testing.T) {
 								BuilderConfig: &proposer.BuilderConfig{
 									Enabled:  true,
 									GasLimit: 42,
-									Relays:   relays,
+									Builders: relays,
 								},
 							},
 						},
@@ -121,7 +121,7 @@ func TestDB_ConvertDatabase(t *testing.T) {
 							BuilderConfig: &proposer.BuilderConfig{
 								Enabled:  false,
 								GasLimit: 43,
-								Relays:   relays,
+								Builders: relays,
 							},
 						},
 					}

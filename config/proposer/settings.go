@@ -84,8 +84,10 @@ func verifyOption(key string, option *validatorpb.ProposerOptionPayload) error {
 type BuilderConfig struct {
 	Enabled             bool             `json:"enabled" yaml:"enabled"`
 	GasLimit            validator.Uint64 `json:"gas_limit,omitempty" yaml:"gas_limit,omitempty"`
-	Relays              []string         `json:"relays,omitempty" yaml:"relays,omitempty"`
+	Builders            []string         `json:"builders,omitempty" yaml:"builders,omitempty"`
 	MaxExecutionPayment validator.Uint64 `json:"max_execution_payment,omitempty" yaml:"max_execution_payment,omitempty"`
+	// Proxy overrides where builder HTTP is sent, builders stay the signed identities.
+	Proxy string `json:"proxy,omitempty" yaml:"proxy,omitempty"`
 }
 
 // BuilderConfigFromConsensus converts protobuf to a builder config used in in-memory storage
@@ -97,11 +99,18 @@ func BuilderConfigFromConsensus(from *validatorpb.BuilderConfig) *BuilderConfig 
 		Enabled:             from.Enabled,
 		GasLimit:            from.GasLimit,
 		MaxExecutionPayment: from.MaxExecutionPayment,
+		Proxy:               from.Proxy,
 	}
-	if from.Relays != nil {
-		relays := make([]string, len(from.Relays))
-		copy(relays, from.Relays)
-		c.Relays = relays
+	// relays is the deprecated name for builders, read as a fallback.
+	src := from.Builders
+	if len(src) == 0 && len(from.Relays) > 0 {
+		log.Warn("Proposer settings builder.relays is deprecated, rename it to builder.builders")
+		src = from.Relays
+	}
+	if src != nil {
+		builders := make([]string, len(src))
+		copy(builders, src)
+		c.Builders = builders
 	}
 	return c
 }
@@ -242,11 +251,11 @@ func (bc *BuilderConfig) Clone() *BuilderConfig {
 	c.Enabled = bc.Enabled
 	c.GasLimit = bc.GasLimit
 	c.MaxExecutionPayment = bc.MaxExecutionPayment
-	var relays []string
-	if bc.Relays != nil {
-		relays = make([]string, len(bc.Relays))
-		copy(relays, bc.Relays)
-		c.Relays = relays
+	c.Proxy = bc.Proxy
+	if bc.Builders != nil {
+		builders := make([]string, len(bc.Builders))
+		copy(builders, bc.Builders)
+		c.Builders = builders
 	}
 	return c
 }
@@ -266,14 +275,14 @@ func (bc *BuilderConfig) ToConsensus() *validatorpb.BuilderConfig {
 	}
 	c := &validatorpb.BuilderConfig{}
 	c.Enabled = bc.Enabled
-	var relays []string
-	if bc.Relays != nil {
-		relays = make([]string, len(bc.Relays))
-		copy(relays, bc.Relays)
-		c.Relays = relays
+	if bc.Builders != nil {
+		builders := make([]string, len(bc.Builders))
+		copy(builders, bc.Builders)
+		c.Builders = builders
 	}
 	c.GasLimit = bc.GasLimit
 	c.MaxExecutionPayment = bc.MaxExecutionPayment
+	c.Proxy = bc.Proxy
 	return c
 }
 

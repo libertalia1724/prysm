@@ -1299,10 +1299,10 @@ func (v *validator) submittedPrefSlotsCount() int {
 	return len(v.submittedPrefSlots)
 }
 
-func (v *validator) builderConfigForKey(pk pubkey) ([]string, uint64, bool) {
+func (v *validator) builderConfigForKey(pk pubkey) *proposer.BuilderConfig {
 	ps := v.ProposerSettings()
 	if ps == nil {
-		return nil, 0, false
+		return nil
 	}
 	var bc *proposer.BuilderConfig
 	if ps.DefaultConfig != nil {
@@ -1313,10 +1313,7 @@ func (v *validator) builderConfigForKey(pk pubkey) ([]string, uint64, bool) {
 			bc = c.BuilderConfig
 		}
 	}
-	if bc == nil {
-		return nil, 0, false
-	}
-	return bc.Relays, uint64(bc.MaxExecutionPayment), bc.Enabled
+	return bc
 }
 
 // Resubmitted every push to repopulate a restarted beacon node, using cached auths to avoid re-signing.
@@ -1337,16 +1334,16 @@ func (v *validator) buildBuilderPreferenceRequests(ctx context.Context, km keyma
 func (v *validator) builderPreferenceRequestsForDuties(ctx context.Context, km keymanager.IKeymanager, slot primitives.Slot, duties iter.Seq2[pubkey, *ethpb.ValidatorDuty]) []*ethpb.SubmitBuilderPreferencesRequest {
 	var reqs []*ethpb.SubmitBuilderPreferencesRequest
 	for pk, duty := range duties {
-		relays, maxPayment, enabled := v.builderConfigForKey(pk)
-		if !enabled || len(relays) == 0 {
+		bc := v.builderConfigForKey(pk)
+		if bc == nil || !bc.Enabled || len(bc.Builders) == 0 {
 			continue
 		}
 		for _, proposalSlot := range duty.ProposerSlots {
 			if proposalSlot <= slot {
 				continue
 			}
-			for _, relay := range relays {
-				signed, err := v.signRequestAuthCached(ctx, km, pk, relay, proposalSlot)
+			for _, builderURL := range bc.Builders {
+				signed, err := v.signRequestAuthCached(ctx, km, pk, builderURL, proposalSlot)
 				if err != nil {
 					log.WithError(err).Warn("Failed to sign builder request auth")
 					continue
@@ -1354,9 +1351,10 @@ func (v *validator) builderPreferenceRequestsForDuties(ctx context.Context, km k
 				reqs = append(reqs, &ethpb.SubmitBuilderPreferencesRequest{
 					ValidatorPubkey: pk[:],
 					Request: &ethpb.BuilderPreferencesRequestV1{
-						Preferences: &ethpb.BuilderPreferencesV1{MaxExecutionPayment: primitives.Gwei(maxPayment)},
+						Preferences: &ethpb.BuilderPreferencesV1{MaxExecutionPayment: primitives.Gwei(uint64(bc.MaxExecutionPayment))},
 						Auth:        signed,
 					},
+					Proxy: bc.Proxy,
 				})
 			}
 		}
