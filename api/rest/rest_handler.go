@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/OffchainLabs/prysm/v7/api"
 	"github.com/OffchainLabs/prysm/v7/api/apiutil"
@@ -68,6 +69,28 @@ func (c *handler) Host() string {
 	return c.host
 }
 
+func (c *handler) do(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := c.client.Do(req)
+
+	fields := logrus.Fields{
+		"method":   req.Method,
+		"host":     c.host,
+		"url":      req.URL.String(),
+		"duration": time.Since(start),
+	}
+
+	if err != nil {
+		log.WithError(err).WithFields(fields).Debug("Request failed")
+		return resp, fmt.Errorf("do: %w", err)
+	}
+
+	fields["status"] = resp.StatusCode
+	log.WithFields(fields).Debug("Request")
+
+	return resp, err
+}
+
 // Get sends a GET request and decodes the response body as a JSON object into the passed in object.
 func (c *handler) Get(ctx context.Context, endpoint string, resp any) error {
 	url := c.host + endpoint
@@ -76,7 +99,7 @@ func (c *handler) Get(ctx context.Context, endpoint string, resp any) error {
 		return errors.Wrapf(err, "failed to create request for endpoint %s", url)
 	}
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
@@ -100,7 +123,7 @@ func (c *handler) getRaw(ctx context.Context, endpoint string) (json.RawMessage,
 	}
 
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
@@ -151,7 +174,7 @@ func (c *handler) GetStatusCode(ctx context.Context, endpoint string) (int, erro
 		return 0, errors.Wrapf(err, "failed to create request for endpoint %s", url)
 	}
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
@@ -180,7 +203,7 @@ func (c *handler) GetSSZ(ctx context.Context, endpoint string) ([]byte, http.Hea
 	}
 
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
@@ -240,7 +263,7 @@ func (c *handler) Post(
 	}
 	req.Header.Set("Content-Type", api.JsonMediaType)
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
@@ -285,7 +308,7 @@ func (c *handler) PostSSZ(
 	}
 	req.Header.Set("Content-Type", api.OctetStreamMediaType)
 	req.Header.Set("User-Agent", version.BuildData())
-	httpResp, err := c.client.Do(req)
+	httpResp, err := c.do(req)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to perform request for endpoint %s", url)
 	}
