@@ -81,7 +81,9 @@ func (c *handler) do(req *http.Request) (*http.Response, error) {
 	}
 
 	if err != nil {
-		log.WithError(err).WithFields(fields).Debug("Request failed")
+		if !errors.Is(err, context.Canceled) {
+			log.WithError(err).WithFields(fields).Debug("Request failed")
+		}
 		return resp, fmt.Errorf("do: %w", err)
 	}
 

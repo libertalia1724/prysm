@@ -3,10 +3,12 @@ package client
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
 	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -88,6 +90,12 @@ func (v *validator) LogSubmittedAtts(slot primitives.Slot) {
 	v.attLogsLock.Lock()
 	defer v.attLogsLock.Unlock()
 
+	slotTime, err := slots.StartTime(v.genesisTime, slot)
+	if err != nil {
+		log.WithError(err).Error("Failed to determine slot start time")
+	}
+	sinceSlotStartTime := time.Since(slotTime)
+
 	for _, attLog := range v.submittedAtts {
 		pubkeys := make([]string, len(attLog.pubkeys))
 		for i, p := range attLog.pubkeys {
@@ -98,14 +106,15 @@ func (v *validator) LogSubmittedAtts(slot primitives.Slot) {
 			committees[i] = strconv.FormatUint(uint64(c), 10)
 		}
 		log.WithFields(logrus.Fields{
-			"slot":             slot,
-			"committeeIndices": committees,
-			"pubkeys":          pubkeys,
-			"blockRoot":        fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.beaconBlockRoot)),
-			"sourceEpoch":      attLog.data.source.Epoch,
-			"sourceRoot":       fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.source.Root)),
-			"targetEpoch":      attLog.data.target.Epoch,
-			"targetRoot":       fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.target.Root)),
+			"slot":               slot,
+			"sinceSlotStartTime": sinceSlotStartTime,
+			"committeeIndices":   committees,
+			"pubkeys":            pubkeys,
+			"blockRoot":          fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.beaconBlockRoot)),
+			"sourceEpoch":        attLog.data.source.Epoch,
+			"sourceRoot":         fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.source.Root)),
+			"targetEpoch":        attLog.data.target.Epoch,
+			"targetRoot":         fmt.Sprintf("%#x", bytesutil.Trunc(attLog.data.target.Root)),
 		}).Info("Submitted new attestations")
 	}
 	for _, attLog := range v.submittedAggregates {
