@@ -897,11 +897,16 @@ func (v *validator) ProcessEvent(ctx context.Context, event *eventClient.Event) 
 	case eventClient.EventConnectionError:
 		log.WithError(errors.New(string(event.Data))).Error("Event stream interrupted")
 	case eventClient.EventHead:
-		log.Debug("Received head event")
 		head := &structs.HeadEvent{}
 		if err := json.Unmarshal(event.Data, head); err != nil {
 			log.WithError(err).Error("Failed to unmarshal head Event into JSON")
 		}
+
+		log.WithFields(logrus.Fields{
+			"slot":      head.Slot,
+			"blockRoot": head.Block,
+		}).Debug("Received head event")
+
 		uintSlot, err := strconv.ParseUint(head.Slot, 10, 64)
 		if err != nil {
 			log.WithError(err).Error("Failed to parse slot")
