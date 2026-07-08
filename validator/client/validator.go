@@ -1342,19 +1342,20 @@ func (v *validator) builderPreferenceRequestsForDuties(ctx context.Context, km k
 			if proposalSlot <= slot {
 				continue
 			}
-			for _, builderURL := range bc.Builders {
-				signed, err := v.signRequestAuthCached(ctx, km, pk, builderURL, proposalSlot)
+			for _, entry := range bc.Builders {
+				signed, err := v.signRequestAuthCached(ctx, km, pk, entry.URL, proposalSlot)
 				if err != nil {
 					log.WithError(err).Warn("Failed to sign builder request auth")
 					continue
 				}
+				maxPayment, proxy := resolveBuilderEntry(bc, entry)
 				reqs = append(reqs, &ethpb.SubmitBuilderPreferencesRequest{
 					ValidatorPubkey: pk[:],
 					Request: &ethpb.BuilderPreferencesRequestV1{
-						Preferences: &ethpb.BuilderPreferencesV1{MaxExecutionPayment: primitives.Gwei(uint64(bc.MaxExecutionPayment))},
+						Preferences: &ethpb.BuilderPreferencesV1{MaxExecutionPayment: primitives.Gwei(maxPayment)},
 						Auth:        signed,
 					},
-					Proxy: bc.Proxy,
+					Proxy: proxy,
 				})
 			}
 		}

@@ -68,7 +68,7 @@ func Test_BuilderMethodsWithouClient(t *testing.T) {
 	assert.ErrorContains(t, ErrNoBuilder.Error(), err)
 
 	// With no signed auths there's nothing to query; multiplex returns no bids and no error.
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 0, [32]byte{}, [32]byte{}, [48]byte{}, nil, "")
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 0, [32]byte{}, [32]byte{}, [48]byte{}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(bids))
 

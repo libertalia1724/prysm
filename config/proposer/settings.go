@@ -79,12 +79,21 @@ func verifyOption(key string, option *validatorpb.ProposerOptionPayload) error {
 	return nil
 }
 
+// BuilderEntry is one builder in a BuilderConfig, URL is the signed identity.
+type BuilderEntry struct {
+	URL string `json:"url" yaml:"url"`
+	// Pubkey binds trusted execution payments to this builder's on-chain key.
+	Pubkey              string           `json:"pubkey,omitempty" yaml:"pubkey,omitempty"`
+	Proxy               string           `json:"proxy,omitempty" yaml:"proxy,omitempty"`
+	MaxExecutionPayment validator.Uint64 `json:"max_execution_payment,omitempty" yaml:"max_execution_payment,omitempty"`
+}
+
 // BuilderConfig is the struct representation of the JSON config file set in the validator through the CLI.
 // GasLimit is a number set to help the network decide on the maximum gas in each block.
 type BuilderConfig struct {
 	Enabled             bool             `json:"enabled" yaml:"enabled"`
 	GasLimit            validator.Uint64 `json:"gas_limit,omitempty" yaml:"gas_limit,omitempty"`
-	Builders            []string         `json:"builders,omitempty" yaml:"builders,omitempty"`
+	Builders            []BuilderEntry   `json:"builders,omitempty" yaml:"builders,omitempty"`
 	MaxExecutionPayment validator.Uint64 `json:"max_execution_payment,omitempty" yaml:"max_execution_payment,omitempty"`
 	// Proxy overrides where builder HTTP is sent, builders stay the signed identities.
 	Proxy string `json:"proxy,omitempty" yaml:"proxy,omitempty"`
@@ -101,16 +110,26 @@ func BuilderConfigFromConsensus(from *validatorpb.BuilderConfig) *BuilderConfig 
 		MaxExecutionPayment: from.MaxExecutionPayment,
 		Proxy:               from.Proxy,
 	}
-	// relays is the deprecated name for builders, read as a fallback.
-	src := from.Builders
-	if len(src) == 0 && len(from.Relays) > 0 {
-		log.Warn("Proposer settings builder.relays is deprecated, rename it to builder.builders")
-		src = from.Relays
+	for _, e := range from.Builders {
+		if e.GetUrl() == "" {
+			continue
+		}
+		c.Builders = append(c.Builders, BuilderEntry{
+			URL:                 e.Url,
+			Pubkey:              e.Pubkey,
+			Proxy:               e.Proxy,
+			MaxExecutionPayment: e.MaxExecutionPayment,
+		})
 	}
-	if src != nil {
-		builders := make([]string, len(src))
-		copy(builders, src)
-		c.Builders = builders
+	// relays is the deprecated name for builders, read as a fallback.
+	if len(c.Builders) == 0 && len(from.Relays) > 0 {
+		log.Warn("Proposer settings builder.relays is deprecated, use builder.builders entries")
+		for _, r := range from.Relays {
+			if r == "" {
+				continue
+			}
+			c.Builders = append(c.Builders, BuilderEntry{URL: r})
+		}
 	}
 	return c
 }
@@ -253,7 +272,7 @@ func (bc *BuilderConfig) Clone() *BuilderConfig {
 	c.MaxExecutionPayment = bc.MaxExecutionPayment
 	c.Proxy = bc.Proxy
 	if bc.Builders != nil {
-		builders := make([]string, len(bc.Builders))
+		builders := make([]BuilderEntry, len(bc.Builders))
 		copy(builders, bc.Builders)
 		c.Builders = builders
 	}
@@ -275,10 +294,13 @@ func (bc *BuilderConfig) ToConsensus() *validatorpb.BuilderConfig {
 	}
 	c := &validatorpb.BuilderConfig{}
 	c.Enabled = bc.Enabled
-	if bc.Builders != nil {
-		builders := make([]string, len(bc.Builders))
-		copy(builders, bc.Builders)
-		c.Builders = builders
+	for _, e := range bc.Builders {
+		c.Builders = append(c.Builders, &validatorpb.BuilderEntry{
+			Url:                 e.URL,
+			Pubkey:              e.Pubkey,
+			Proxy:               e.Proxy,
+			MaxExecutionPayment: e.MaxExecutionPayment,
+		})
 	}
 	c.GasLimit = bc.GasLimit
 	c.MaxExecutionPayment = bc.MaxExecutionPayment

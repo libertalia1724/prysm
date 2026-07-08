@@ -43,6 +43,18 @@ func authFor(url string) *eth.SignedRequestAuthV1 {
 	return &eth.SignedRequestAuthV1{Message: &eth.RequestAuthV1{Data: []byte(url)}}
 }
 
+func entryFor(url string) *eth.BuilderRequestEntry {
+	return &eth.BuilderRequestEntry{Auth: authFor(url), Url: url}
+}
+
+func entryVia(identity, dial string) *eth.BuilderRequestEntry {
+	return &eth.BuilderRequestEntry{Auth: authFor(identity), Url: dial}
+}
+
+func identityOf(pb PayloadBid) string {
+	return string(pb.Entry.GetAuth().GetMessage().GetData())
+}
+
 func bidWithValue(v primitives.Gwei) *eth.SignedExecutionPayloadBid {
 	return &eth.SignedExecutionPayloadBid{Message: &eth.ExecutionPayloadBid{Value: v}}
 }
@@ -67,14 +79,14 @@ func TestGetExecutionPayloadBid_FanOutAndDedup(t *testing.T) {
 	}
 	s := newMultiplexService(t, clients)
 
-	auths := []*eth.SignedRequestAuthV1{authFor("http://a"), authFor("http://b"), authFor("http://a")}
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "")
+	entries := []*eth.BuilderRequestEntry{entryFor("http://a"), entryFor("http://b"), entryFor("http://a")}
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, entries)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(bids))
 
 	got := map[string]primitives.Gwei{}
 	for _, pb := range bids {
-		got[pb.BuilderURL] = pb.Bid.Message.Value
+		got[identityOf(pb)] = pb.Bid.Message.Value
 	}
 	require.Equal(t, primitives.Gwei(100), got["http://a"])
 	require.Equal(t, primitives.Gwei(200), got["http://b"])
@@ -89,16 +101,16 @@ func TestGetExecutionPayloadBid_SkipsErrorsAndNil(t *testing.T) {
 	s := newMultiplexService(t, clients)
 
 	// http://nodial has no client; dialing it fails and is skipped.
-	auths := []*eth.SignedRequestAuthV1{authFor("http://ok"), authFor("http://err"), authFor("http://none"), authFor("http://nodial")}
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "")
+	entries := []*eth.BuilderRequestEntry{entryFor("http://ok"), entryFor("http://err"), entryFor("http://none"), entryFor("http://nodial")}
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, entries)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(bids))
-	require.Equal(t, "http://ok", bids[0].BuilderURL)
+	require.Equal(t, "http://ok", identityOf(bids[0]))
 }
 
-func TestGetExecutionPayloadBid_NoAuths(t *testing.T) {
+func TestGetExecutionPayloadBid_NoEntries(t *testing.T) {
 	s := newMultiplexService(t, nil)
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, nil, "")
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(bids))
 }
@@ -147,15 +159,15 @@ func TestGetExecutionPayloadBid_ProxyOverridesDial(t *testing.T) {
 	proxy := &fakeBuilderClient{url: "http://proxy", bid: bidWithValue(10)}
 	s := newMultiplexService(t, map[string]*fakeBuilderClient{"http://proxy": proxy})
 
-	auths := []*eth.SignedRequestAuthV1{authFor("http://a"), authFor("http://b")}
-	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, auths, "http://proxy")
+	entries := []*eth.BuilderRequestEntry{entryVia("http://a", "http://proxy"), entryVia("http://b", "http://proxy")}
+	bids, err := s.GetExecutionPayloadBid(t.Context(), 1, [32]byte{}, [32]byte{}, [48]byte{}, entries)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(bids))
 
 	// Bids keep the builder identity, not the proxy.
 	got := map[string]bool{}
 	for _, pb := range bids {
-		got[pb.BuilderURL] = true
+		got[identityOf(pb)] = true
 	}
 	require.Equal(t, true, got["http://a"])
 	require.Equal(t, true, got["http://b"])

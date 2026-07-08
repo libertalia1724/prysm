@@ -79,17 +79,12 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 	}
 
 	// Request block from beacon node
-	req := &ethpb.BlockRequest{
-		Slot:                slot,
-		RandaoReveal:        randaoReveal,
-		Graffiti:            g,
-		BuilderRequestAuths: v.builderRequestAuthsForSlot(pubKey, slot),
-	}
-	if bc := v.builderConfigForKey(pubKey); bc != nil && bc.Enabled {
-		req.BuilderProxy = bc.Proxy
-		req.MaxExecutionPayment = uint64(bc.MaxExecutionPayment)
-	}
-	b, err := v.validatorClient.BeaconBlock(ctx, req)
+	b, err := v.validatorClient.BeaconBlock(ctx, &ethpb.BlockRequest{
+		Slot:           slot,
+		RandaoReveal:   randaoReveal,
+		Graffiti:       g,
+		BuilderEntries: v.builderEntriesForSlot(pubKey, slot),
+	})
 	if err != nil {
 		log.WithField("slot", slot).WithError(err).Error("Failed to request block from beacon node")
 		if v.emitAccountMetrics {

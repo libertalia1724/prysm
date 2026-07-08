@@ -127,6 +127,21 @@ message ProposerOptionPayload {
   ];
 }
 
+// BuilderEntry is one builder in a BuilderConfig.
+message BuilderEntry {
+  // url is the builder identity the VC signs into request auths.
+  string url = 1;
+  // pubkey optionally binds trusted execution payments to this builder's on-chain key.
+  string pubkey = 2;
+  // proxy overrides the config-level dial target for this builder only.
+  string proxy = 3;
+  // max_execution_payment overrides the config-level cap for this builder only.
+  uint64 max_execution_payment = 4 [
+    (ethereum.eth.ext.cast_type) =
+        "github.com/OffchainLabs/prysm/v7/consensus-types/validator.Uint64"
+  ];
+}
+
 // BuilderConfig is a property of ProposerOptionPayload
 message BuilderConfig {
   bool enabled = 1;
@@ -146,7 +161,7 @@ message BuilderConfig {
   // proxy optionally overrides where builder HTTP requests are sent, request
   // auths stay signed over the builder URLs so a sidecar can forward them.
   string proxy = 5;
-  repeated string builders = 6;
+  repeated BuilderEntry builders = 6;
 }
 
 // ProposerSettingsPayload is used to unmarshal files sent from the validator
