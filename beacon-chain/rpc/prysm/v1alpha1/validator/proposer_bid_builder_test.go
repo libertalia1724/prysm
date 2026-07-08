@@ -180,7 +180,7 @@ func TestValidateBuilderBid(t *testing.T) {
 		require.ErrorContains(t, "exceeds max", err)
 	})
 
-	t.Run("payment from untrusted builder rejected", func(t *testing.T) {
+	t.Run("payment from wrong builder for pinned entry rejected", func(t *testing.T) {
 		trustedState, err := util.NewBeaconStateGloas(func(st *ethpb.BeaconStateGloas) error {
 			st.Builders = []*ethpb.Builder{{}, {}, {}, {Pubkey: bytesutil.PadTo([]byte{1}, 48)}}
 			return nil
@@ -189,12 +189,11 @@ func TestValidateBuilderBid(t *testing.T) {
 		vs := &Server{NewExecutionPayloadBidVerifier: func(interfaces.ROSignedExecutionPayloadBid, []verification.Requirement) verification.ExecutionPayloadBidVerifier {
 			return &fakeBidVerifier{}
 		}}
-		trusted := map[[48]byte]bool{bytesutil.ToBytes48(bytesutil.PadTo([]byte{2}, 48)): true}
-		err = vs.validateBuilderBid(trustedState, fullBid(), query(), 1000, trusted)
-		require.ErrorContains(t, "not a trusted payment builder", err)
+		err = vs.validateBuilderBid(trustedState, fullBid(), query(), 1000, bytesutil.PadTo([]byte{2}, 48))
+		require.ErrorContains(t, "not the trusted payment builder", err)
 	})
 
-	t.Run("payment from trusted builder accepted", func(t *testing.T) {
+	t.Run("payment from pinned builder accepted", func(t *testing.T) {
 		trustedState, err := util.NewBeaconStateGloas(func(st *ethpb.BeaconStateGloas) error {
 			st.Builders = []*ethpb.Builder{{}, {}, {}, {Pubkey: bytesutil.PadTo([]byte{1}, 48)}}
 			return nil
@@ -203,18 +202,23 @@ func TestValidateBuilderBid(t *testing.T) {
 		vs := &Server{NewExecutionPayloadBidVerifier: func(interfaces.ROSignedExecutionPayloadBid, []verification.Requirement) verification.ExecutionPayloadBidVerifier {
 			return &fakeBidVerifier{}
 		}}
-		trusted := map[[48]byte]bool{bytesutil.ToBytes48(bytesutil.PadTo([]byte{1}, 48)): true}
-		require.NoError(t, vs.validateBuilderBid(trustedState, fullBid(), query(), 1000, trusted))
+		require.NoError(t, vs.validateBuilderBid(trustedState, fullBid(), query(), 1000, bytesutil.PadTo([]byte{1}, 48)))
 	})
 
-	t.Run("zero payment needs no trust", func(t *testing.T) {
+	t.Run("unpinned entry accepts payment from any builder", func(t *testing.T) {
+		vs := &Server{NewExecutionPayloadBidVerifier: func(interfaces.ROSignedExecutionPayloadBid, []verification.Requirement) verification.ExecutionPayloadBidVerifier {
+			return &fakeBidVerifier{}
+		}}
+		require.NoError(t, vs.validateBuilderBid(head, fullBid(), query(), 1000, nil))
+	})
+
+	t.Run("zero payment ignores pinned pubkey", func(t *testing.T) {
 		vs := &Server{NewExecutionPayloadBidVerifier: func(interfaces.ROSignedExecutionPayloadBid, []verification.Requirement) verification.ExecutionPayloadBidVerifier {
 			return &fakeBidVerifier{}
 		}}
 		bid := fullBid()
 		bid.Message.ExecutionPayment = 0
-		trusted := map[[48]byte]bool{bytesutil.ToBytes48(bytesutil.PadTo([]byte{2}, 48)): true}
-		require.NoError(t, vs.validateBuilderBid(head, bid, query(), 1000, trusted))
+		require.NoError(t, vs.validateBuilderBid(head, bid, query(), 1000, bytesutil.PadTo([]byte{2}, 48)))
 	})
 
 	t.Run("verifier not ready", func(t *testing.T) {

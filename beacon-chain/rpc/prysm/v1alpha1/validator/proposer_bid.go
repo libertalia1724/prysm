@@ -147,21 +147,6 @@ type builderBidQuery struct {
 	entries        []*ethpb.BuilderRequestEntry
 }
 
-// trustedBuilderPubkeys returns the configured pubkeys that gate trusted execution payments.
-func (q *builderBidQuery) trustedBuilderPubkeys() map[[fieldparams.BLSPubkeyLength]byte]bool {
-	var trusted map[[fieldparams.BLSPubkeyLength]byte]bool
-	for _, e := range q.entries {
-		if len(e.GetPubkey()) != fieldparams.BLSPubkeyLength {
-			continue
-		}
-		if trusted == nil {
-			trusted = make(map[[fieldparams.BLSPubkeyLength]byte]bool)
-		}
-		trusted[bytesutil.ToBytes48(e.GetPubkey())] = true
-	}
-	return trusted
-}
-
 // Returns the winning bid, the dial URL to submit the signed block to, and the payment cap the bid was accepted under.
 func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.BeaconState, q *builderBidQuery) (*ethpb.SignedExecutionPayloadBid, string, uint64) {
 	if vs.BlockBuilder == nil || len(q.entries) == 0 {
@@ -176,7 +161,6 @@ func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.
 		return nil, "", 0
 	}
 
-	trusted := q.trustedBuilderPubkeys()
 	var (
 		best      *ethpb.SignedExecutionPayloadBid
 		bestURL   string
@@ -190,7 +174,7 @@ func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.
 		}
 		identity := logs.MaskCredentialsLogging(string(pb.Entry.GetAuth().GetMessage().GetData()))
 		maxPayment := pb.Entry.GetMaxExecutionPayment()
-		if err := vs.validateBuilderBid(head, pb.Bid, q, maxPayment, trusted); err != nil {
+		if err := vs.validateBuilderBid(head, pb.Bid, q, maxPayment, pb.Entry.GetPubkey()); err != nil {
 			bidLog = append(bidLog, fmt.Sprintf("%s(builder=%d discarded: %v)", identity, pb.Bid.Message.BuilderIndex, err))
 			continue
 		}
@@ -214,7 +198,7 @@ func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.
 }
 
 // validateBuilderBid mirrors process_execution_payload_bid so a chosen bid never invalidates the proposer's own block.
-func (vs *Server) validateBuilderBid(head state.BeaconState, signed *ethpb.SignedExecutionPayloadBid, q *builderBidQuery, maxPayment uint64, trusted map[[fieldparams.BLSPubkeyLength]byte]bool) error {
+func (vs *Server) validateBuilderBid(head state.BeaconState, signed *ethpb.SignedExecutionPayloadBid, q *builderBidQuery, maxPayment uint64, trustedPubkey []byte) error {
 	if signed == nil || signed.Message == nil {
 		return errors.New("nil builder bid")
 	}
@@ -222,14 +206,14 @@ func (vs *Server) validateBuilderBid(head state.BeaconState, signed *ethpb.Signe
 	if uint64(bid.ExecutionPayment) > maxPayment {
 		return errors.Errorf("bid execution payment %d exceeds max %d", bid.ExecutionPayment, maxPayment)
 	}
-	// Execution payments are off-protocol promises, credited only for builders the proposer listed by pubkey.
-	if bid.ExecutionPayment > 0 && trusted != nil {
+	// Execution payments are off-protocol promises, an entry that pins a pubkey only credits that builder's promises.
+	if bid.ExecutionPayment > 0 && len(trustedPubkey) == fieldparams.BLSPubkeyLength {
 		pub, err := head.BuilderPubkey(bid.BuilderIndex)
 		if err != nil {
 			return errors.Wrap(err, "could not get builder pubkey for payment trust check")
 		}
-		if !trusted[pub] {
-			return errors.Errorf("builder %d is not a trusted payment builder", bid.BuilderIndex)
+		if pub != bytesutil.ToBytes48(trustedPubkey) {
+			return errors.Errorf("builder %d is not the trusted payment builder for this entry", bid.BuilderIndex)
 		}
 	}
 
