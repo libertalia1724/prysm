@@ -139,7 +139,7 @@ func (s *MockBuilderService) GetExecutionPayloadBid(_ context.Context, _ primiti
 		return s.PayloadBids, s.ErrGetExecutionPayloadBid
 	}
 	if s.PayloadBid != nil {
-		return []beaconbuilder.PayloadBid{{Bid: s.PayloadBid}}, s.ErrGetExecutionPayloadBid
+		return []beaconbuilder.PayloadBid{{Entry: &ethpb.BuilderRequestEntry{}, Bid: s.PayloadBid}}, s.ErrGetExecutionPayloadBid
 	}
 	return nil, s.ErrGetExecutionPayloadBid
 }

@@ -182,7 +182,11 @@ func (vs *Server) getBuilderExecutionPayloadBid(ctx context.Context, head state.
 		bidLog = append(bidLog, fmt.Sprintf("%s(builder=%d value=%d payment=%d effective=%d)",
 			identity, pb.Bid.Message.BuilderIndex, pb.Bid.Message.Value, pb.Bid.Message.ExecutionPayment, value))
 		if best == nil || value > bestValue {
-			best, bestURL, bestCap, bestValue = pb.Bid, pb.Entry.GetUrl(), maxPayment, value
+			dial := pb.Entry.GetUrl()
+			if dial == "" {
+				dial = string(pb.Entry.GetAuth().GetMessage().GetData())
+			}
+			best, bestURL, bestCap, bestValue = pb.Bid, dial, maxPayment, value
 		}
 	}
 
