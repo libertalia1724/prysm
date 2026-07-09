@@ -981,11 +981,6 @@ func (v *validator) filterAndCacheActiveKeys(ctx context.Context, pubkeys [][fie
 	for k, s := range v.pubkeyToStatus {
 		if isActiveForDuties(s.status, currEpoch) {
 			filteredKeys = append(filteredKeys, k)
-		} else {
-			log.WithFields(logrus.Fields{
-				"pubkey": hexutil.Encode(s.publicKey),
-				"status": s.status.Status.String(),
-			}).Debugf("Skipping non-active status key.")
 		}
 	}
 
