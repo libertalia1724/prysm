@@ -79,7 +79,6 @@ const (
 	DataColumnTopic = "data_column_sidecar"
 	// ExecutionPayloadAvailableTopic represents the event topic fired when an execution payload envelope
 	// and its custody data are available (for PTC voting). It does not require EL validity.
-	// TODO: Decouple emitting this event from EL validation.
 	ExecutionPayloadAvailableTopic = "execution_payload_available"
 	// ExecutionPayloadTopic represents the event topic fired after an execution payload envelope is
 	// successfully imported into fork choice (post EL execution).
@@ -88,7 +87,6 @@ const (
 	// that passes validation rules.
 	ExecutionPayloadGossipTopic = "execution_payload_gossip"
 	// ExecutionPayloadBidTopic represents a new execution payload bid event topic.
-	// This topic is currently not triggered but is recognized to avoid client subscription errors.
 	ExecutionPayloadBidTopic = "execution_payload_bid"
 	// PayloadAttestationMessageTopic represents a new payload attestation message event topic.
 	PayloadAttestationMessageTopic = "payload_attestation_message"

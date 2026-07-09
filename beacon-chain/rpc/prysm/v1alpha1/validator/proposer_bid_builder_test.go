@@ -326,11 +326,11 @@ func TestGetBuilderExecutionPayloadBid(t *testing.T) {
 			BlockBuilder:                   &builderTest.MockBuilderService{PayloadBids: []beaconbuilder.PayloadBid{bid(1, 500), bid(2, 1500), bid(3, 900)}},
 			NewExecutionPayloadBidVerifier: passAll,
 		}
-		got, url, cap := vs.getBuilderExecutionPayloadBid(t.Context(), head, query(entries))
+		got, url, gotCap := vs.getBuilderExecutionPayloadBid(t.Context(), head, query(entries))
 		require.NotNil(t, got)
 		require.Equal(t, primitives.BuilderIndex(2), got.Message.BuilderIndex)
 		require.Equal(t, "http://builder", url)
-		require.Equal(t, uint64(1000), cap)
+		require.Equal(t, uint64(1000), gotCap)
 	})
 
 	t.Run("discards invalid bids", func(t *testing.T) {
